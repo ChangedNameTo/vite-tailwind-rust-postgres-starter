@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: node:latest
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3001:3000"
+    environment:
+      - VITE_SERVER_ENDPOINT=${VITE_SERVER_ENDPOINT}
+      - VITE_GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      - VITE_GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
+      - VITE_GOOGLE_OAUTH_REDIRECT=${GOOGLE_OAUTH_REDIRECT_URL}
+    command: sh -c "yarn install && yarn run dev"
+
+  middleware:
+    build:
+      context: ./middleware
+      dockerfile: Dockerfile
+    volumes:
+      - ./middleware:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - CLIENT_ORIGIN=${CLIENT_ORIGIN}
+      - JWT_SECRET=${JWT_SECRET}
+      - TOKEN_EXPIRED_IN=${TOKEN_EXPIRED_IN}
+      - TOKEN_MAXAGE=${TOKEN_MAXAGE}
+      - GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID}
+      - GOOGLE_OAUTH_CLIENT_SECRET=${GOOGLE_OAUTH_CLIENT_SECRET}
+      - GOOGLE_OAUTH_REDIRECT_URL=${GOOGLE_OAUTH_REDIRECT_URL}
+      - DATABASE_URL=${DATABASE_URL}
+      - PSQL_DATABASE=${PSQL_DATABASE}
+    command: sh -c "diesel setup && diesel migration run && cargo run"
+
+  db:
+    image: postgres:latest
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d ${DB_NAME} -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
